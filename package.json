@@ -6,6 +6,11 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "bin": "bin/cork",
   "author": "Sam Day",
-  "license": "BSD"
+  "license": "BSD",
+  "dependencies": {
+    "flatiron": "~0.2.5",
+    "coffee-script": "~1.3.3"
+  }
 }
