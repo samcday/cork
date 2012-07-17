@@ -27,7 +27,7 @@ findRoot (root) ->
 	if root
 		app.cork = cork = new Cork root if root
 		app.cork.init (err) ->
-			return app.log.error err if err
+			return console.error err if err # TODO:
 			npmConfig = 
 				prefix: root
 			npm.load npmConfig, (err, npm) ->

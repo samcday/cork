@@ -4,8 +4,9 @@ fs = require "fs"
 path = require "path"
 async = require "async"
 mkdirp = require "mkdirp"
+{safeJSON} = util = require "./util"
 
-validAnnexTypes = ["content", "blog"]
+validAnnexTypes = ["content", "blog", "layout"]
 
 regex = 
 	annexType: /^(.*?)\.annex$/
@@ -18,10 +19,10 @@ fileIgnores = [
 	/cork\.json$/
 ]
 
-class CorkAnnex
+class Annex
 	constructor: (@cork, @type, @config, @root) ->
 		handlerName = "cork-#{@type}-#{@config.handler}"
-		handlerPath = path.join @cork.root, @root, "node_modules", handlerName
+		handlerPath = path.join @cork.root, "node_modules", handlerName
 		@handler = (require handlerPath) @
 	init: (cb) ->
 		self = @
@@ -45,6 +46,10 @@ class CorkAnnex
 			matches = _.select matches, (match) -> not _.any fileIgnores, (item) -> item.test match
 			cb null, matches
 
+class LayoutAnnex extends Annex
+	layoutContent: (content, cb) ->
+		
+
 module.exports = class Cork
 	constructor: (@root) ->
 		@annexes = []
@@ -64,7 +69,7 @@ module.exports = class Cork
 	_loadConfig: (cb) =>
 		fs.readFile (path.join @root, "cork.json"), "utf8", (err, data) =>
 			return cb err if err?
-			@config = JSON.parse data
+			return unless @config = safeJSON.parse data, cb
 			@outRoot = path.join @root, @config?.generate?.outDir or "out"
 			cb()
 	# Discovers all modules inside cork app.
@@ -76,14 +81,14 @@ module.exports = class Cork
 				annexPath = path.dirname annexPath
 				[annexType] = (regex.annexType.exec annexFile).slice 1
 				return cb new Error "Unknown annex type #{annexType}" unless (validAnnexTypes.indexOf annexType) > -1
-				fs.readFile annexFile, "utf8", (err, data) ->
-					annexConfig = JSON.parse data
-					cb null, new CorkAnnex self, annexType, annexConfig, path.relative self.root, annexPath
-			async.map files, processAnnex, (err, annexes) ->
+				fs.readFile (path.join annexPath, annexFile), "utf8", (err, data) ->
+					return unless annexConfig = safeJSON.parse data, cb
+					cb null, new Annex self, annexType, annexConfig, path.relative self.root, annexPath
+			async.mapSeries files, processAnnex, (err, annexes) ->
 				return cb err if err?
 				self.annexes = annexes
 				cb()
-	_initAnnexes: (cb) =>		
+	_initAnnexes: (cb) =>
 		async.forEach @annexes, (annex, cb) ->
 			annex.init cb
 		, cb
