@@ -1,3 +1,4 @@
+_ = require "underscore"
 glob = require "glob"
 fs = require "fs"
 path = require "path"
@@ -8,6 +9,25 @@ validAnnexTypes = ["content", "blog"]
 regex = 
 	annexType: /^(.*?)\.annex$/
 
+fileIgnores = [
+	/^node_modules\/?/
+	/\.gitignore$/
+	/\.npmignore$/
+	/\.annex$/
+	/cork\.json$/
+]
+
+class CorkAnnex
+	constructor: (@cork, @type, @config, @root) ->
+		handlerName = "cork-#{@type}-#{@config.handler}"
+		handlerPath = path.join @cork.root, @root, "node_modules", handlerName
+		handler = (require handlerPath) @
+	init: (cb) ->
+		# We can't build the filelist until all annex roots have been discovered
+		glob "**/*", (root: path.join @cork.root, @root), (err, matches) ->
+			matches = _.select matches, (match) -> not _.any fileIgnores, (item) -> item.test match
+			console.log "lol", matches
+			cb()
 module.exports = class Cork
 	constructor: (@root) ->
 		@annexes = []
@@ -30,14 +50,16 @@ module.exports = class Cork
 		glob "#{@root}/**/*.annex", (err, files) ->
 			processAnnex = (annexPath, cb) ->
 				annexFile = path.basename annexPath
+				annexPath = path.dirname annexPath
 				[annexType] = (regex.annexType.exec annexFile).slice 1
 				return cb new Error "Unknown annex type #{annexType}" unless (validAnnexTypes.indexOf annexType) > -1
 				fs.readFile annexFile, "utf8", (err, data) ->
 					annexConfig = JSON.parse data
-					annexConfig.type
-					console.log annexConfig
-					cb()
-			async.forEach files, processAnnex, ->
-				console.log arguments
-				cb()
+					cb null, new CorkAnnex self, annexType, annexConfig, path.relative self.root, annexPath
+			async.map files, processAnnex, (err, annexes) ->
+				return cb err if err?
+				self.annexes = annexes
 
+				async.forEach self.annexes, (annex, cb) ->
+					annex.init cb
+				, cb

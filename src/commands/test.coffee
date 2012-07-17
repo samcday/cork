@@ -1,5 +1,7 @@
 {app} = flatiron = require "flatiron"
 
 module.exports = (cb) ->
-	app.cork.npm.link "cork-plugin-content-markdown", ->
-		console.log arguments
+	# console.log app.cork.npm
+	# return cb()
+	app.cork.npm.install "cork-content-markdown", ->
+		console.log "all done!"
