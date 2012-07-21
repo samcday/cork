@@ -6,7 +6,7 @@ async = require "async"
 mkdirp = require "mkdirp"
 {safeJSON} = util = require "./util"
 
-validAnnexTypes = ["content", "blog", "layout"]
+validAnnexTypes = ["content", "blog", "layout", "assets"]
 
 regex = 
 	annexType: /^(.*?)\.annex$/
@@ -38,7 +38,7 @@ class Annex
 				self.handler.processFile file, cb
 			, cb
 	writeFile: (outName, contents, cb) ->
-		outFile = path.join @cork.outRoot, outName
+		outFile = path.join @cork.outRoot, @root, outName
 		outPath = path.dirname outFile
 		mkdirp outPath, ->
 			fs.writeFile outFile, contents, cb
