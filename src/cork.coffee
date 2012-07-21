@@ -20,19 +20,35 @@ fileIgnores = [
 	/^out\/?/
 ]
 
+class DefaultAssetHandler
+	constructor: (@annex) ->
+	processFile: (file, cb) ->
+		self = @
+		fs.readFile (@annex.pathTo file), (err, contents) ->
+			return cb err if err?
+			self.annex.writeFile file, contents, cb
+
 class Annex
 	constructor: (@cork, @type, @config, @root) ->
 		@config = @config or {}
 		@name = @config.name or path.basename @root
-		handlerName = "cork-#{@type}-#{@config.handler}"
-		handlerPath = path.join @cork.root, "node_modules", handlerName
-		@handler = (require handlerPath) @
 		@outputRoot = @config.root or @root
+
+		# Determine the handler to use for this annex. If this is an asset annex
+		# with no handler, we use a built-in one.
+		if not @config.handler and @type is "assets"
+			@handler = (new DefaultAssetHandler @)
+		else
+			handlerName = "cork-#{@type}-#{@config.handler}"
+			handlerPath = path.join @cork.root, "node_modules", handlerName
+			@handler = (require handlerPath) @
 	init: (cb) ->
+		return cb() unless @handler.init
 		self = @
 		@_getFileList (err, files) ->
 			self.handler.init files, cb
 	processAll: (cb) ->
+		return cb() unless @handler.processFile
 		self = @
 		@_getFileList (err, files) ->
 			async.forEach files, (file, cb) -> 
