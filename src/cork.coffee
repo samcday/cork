@@ -23,7 +23,7 @@ fileIgnores = [
 class Annex
 	constructor: (@cork, @type, @config, @root) ->
 		@config = @config or {}
-		@name = @config.name
+		@name = @config.name or path.basename @root
 		handlerName = "cork-#{@type}-#{@config.handler}"
 		handlerPath = path.join @cork.root, "node_modules", handlerName
 		@handler = (require handlerPath) @
