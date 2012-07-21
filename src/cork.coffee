@@ -76,6 +76,22 @@ class LayoutAnnex extends Annex
 	layoutContent: (content, cb) ->
 		@handler.layoutContent content, cb
 
+class BlogAnnex extends Annex
+	init: (cb) ->
+		@posts = {}
+		super cb
+	addPost: (slug, title, date, categories, tags) ->
+		# console.log "adding post.", arguments
+		@posts[slug] =
+			title: title
+			date: date
+			categories: categories
+			tags: tags
+	getPost: (slug) ->
+		return @posts[slug]
+	writePost: (slug, outName, layout, content, cb) ->
+		@writeContent outName, {layout: layout}, content, cb
+
 module.exports = class Cork
 	constructor: (@root) ->
 		@annexes = []
@@ -88,7 +104,6 @@ module.exports = class Cork
 			cb err
 	# Goes through every annex and processes every file.
 	generate: (cb) ->
-		console.log "generate."
 		async.forEachSeries @annexes, (annex, cb) ->
 			annex.processAll cb
 		, cb
@@ -114,6 +129,7 @@ module.exports = class Cork
 					return unless annexConfig = safeJSON.parse data, cb
 					annexClass = switch annexType
 						when "layout" then LayoutAnnex
+						when "blog" then BlogAnnex
 						else Annex
 					cb null, new annexClass self, annexType, annexConfig, path.relative self.root, annexPath
 			async.mapSeries files, processAnnex, (err, annexes) ->
