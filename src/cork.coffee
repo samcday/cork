@@ -27,6 +27,7 @@ class Annex
 		handlerName = "cork-#{@type}-#{@config.handler}"
 		handlerPath = path.join @cork.root, "node_modules", handlerName
 		@handler = (require handlerPath) @
+		@outputRoot = @config.root or @root
 	init: (cb) ->
 		self = @
 		@_getFileList (err, files) ->
@@ -38,7 +39,7 @@ class Annex
 				self.handler.processFile file, cb
 			, cb
 	writeFile: (outName, contents, cb) ->
-		outFile = path.join @cork.outRoot, @root, outName
+		outFile = path.join @cork.outRoot, @outputRoot, outName
 		outPath = path.dirname outFile
 		mkdirp outPath, ->
 			fs.writeFile outFile, contents, cb
