@@ -123,24 +123,41 @@ class BlogAnnex extends Annex
 		self = @
 		post = @posts[slug]
 		post.content = content
-		chain = []
-		if layout
-			chain.push (cb) ->
-				layoutAnnex = self.cork.findLayout layout
-				layoutAnnex.layoutBlogPost post, cb
-		else
-			chain.push (cb) ->
-				# TODO: some kind of default layout?
-				cb null, post.content
-		chain.push (content, cb) ->
+		layout = @config.layout
+		@_renderPost post, layout, content, (err, rendered) ->
+			return cb err if err?
 			self.writeContent outName, {layout: layout}, content, cb
-		async.waterfall chain, ->
-			cb()
 	processAll: (cb) ->
+		self = @
 		super ->
 			# Now we go ahead and generate the paginated view.
-			cb()
-	
+			async.series [
+				(cb) -> self._generatePages cb
+			], cb
+	_renderPost: (post, layout, content, cb) ->
+		if layout
+			layoutAnnex = @cork.findLayout layout
+			layoutAnnex.layoutBlogPost post, cb
+		else
+			# TODO: some kind of default layout?
+			cb null, post.content
+	_generatePages: (cb) ->
+		self = @
+		sortedPosts = (_.sortBy @posts, (post) -> post.date).reverse()
+		postsPerPage = 10
+		layout = @config.layout
+		generatePage = (page, cb) ->
+			start = (page - 1) * postsPerPage
+			pagePosts = sortedPosts[start...(start + postsPerPage)]
+			async.map pagePosts, (post, cb) ->
+				self._renderPost post, layout, post.content, cb
+			, (err, renderedPosts) ->
+				outName = if page is 1 then "index.html" else "/page/#{page}"
+				self.writeContent outName, { layout: layout }, (renderedPosts.join ""), cb
+
+		pages = Math.ceil (Object.keys @posts).length / postsPerPage
+		async.forEachSeries [1..pages], generatePage, cb
+
 module.exports = class Cork
 	constructor: (@root, @app) ->
 		@annexes = []
@@ -153,9 +170,20 @@ module.exports = class Cork
 			cb err
 	# Goes through every annex and processes every file.
 	generate: (cb) ->
-		async.forEachSeries @annexes, (annex, cb) ->
-			annex.processAll cb
-		, cb
+		self = @
+		# Process layouts first.
+		processAnnexes = (cb, annexes) ->
+			async.forEachSeries annexes, (annex, cb) ->
+				annex.processAll cb
+			, cb
+		async.series [
+			(cb) ->
+				processAnnexes cb, self.layoutAnnexes = _.select self.annexes, (annex) ->
+					return annex instanceof LayoutAnnex
+			(cb) ->
+				processAnnexes cb, _.reject self.annexes, (annex) ->
+					return annex instanceof LayoutAnnex
+		], cb		
 	server: (cb) ->
 		server = @server = express.createServer()
 		server.use express.static @outRoot
