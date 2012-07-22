@@ -1,4 +1,5 @@
 _ = require "underscore"
+express = require "express"
 glob = require "glob"
 fs = require "fs"
 path = require "path"
@@ -156,6 +157,12 @@ module.exports = class Cork
 		async.forEachSeries @annexes, (annex, cb) ->
 			annex.processAll cb
 		, cb
+	listen: (port, cb) ->
+		app = @app = express.createServer()
+		app.use express.static @outRoot
+		app.use express.directory @outRoot
+		app.listen port
+		cb()
 	findLayout: (name) ->
 		_.detect @layoutAnnexes, (annex) -> return annex.name is name
 	# Load the main configuration from cork.json
