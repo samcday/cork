@@ -1,5 +1,6 @@
 _ = require "underscore"
 express = require "express"
+watch = require "watch"
 glob = require "glob"
 fs = require "fs"
 path = require "path"
@@ -143,7 +144,7 @@ class BlogAnnex extends Annex
 			cb()
 	
 module.exports = class Cork
-	constructor: (@root) ->
+	constructor: (@root, @app) ->
 		@annexes = []
 	init: (cb) ->
 		async.series [
@@ -157,14 +158,23 @@ module.exports = class Cork
 		async.forEachSeries @annexes, (annex, cb) ->
 			annex.processAll cb
 		, cb
-	listen: (port, cb) ->
-		app = @app = express.createServer()
-		app.use express.static @outRoot
-		app.use express.directory @outRoot
-		app.listen port
+	server: (cb) ->
+		server = @server = express.createServer()
+		server.use express.static @outRoot
+		server.use express.directory @outRoot
+		server.listen 4000
+		@app.log.info "Starting web server on port 4000"
 		cb()
+	watch: (cb) ->
+		self = @
+		watch.createMonitor @root, { filter: @_filterWatcher }, (monitor) ->
+			self.monitor = monitor
 	findLayout: (name) ->
 		_.detect @layoutAnnexes, (annex) -> return annex.name is name
+	_filterWatcher: (file) =>
+		return false if file is @outRoot
+		return false if (path.basename file) is "node_modules"
+		return false
 	# Load the main configuration from cork.json
 	_loadConfig: (cb) =>
 		fs.readFile (path.join @root, "cork.json"), "utf8", (err, data) =>

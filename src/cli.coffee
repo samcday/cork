@@ -25,7 +25,7 @@ findRoot (root) ->
 			console.log "k!"
 
 	if root
-		app.cork = cork = new Cork root if root
+		app.cork = cork = (new Cork root, app) if root
 		app.cork.init (err) ->
 			return console.error err if err # TODO:
 			npmConfig = 
