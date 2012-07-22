@@ -6,6 +6,7 @@ fs = require "fs"
 path = require "path"
 async = require "async"
 mkdirp = require "mkdirp"
+rimraf = require "rimraf"
 {safeJSON} = util = require "./util"
 
 validAnnexTypes = ["content", "blog", "layout", "assets"]
@@ -77,7 +78,6 @@ class Annex
 				layoutAnnex = self.cork.findLayout layout
 				layoutAnnex.layoutContent content, cb
 		fns.push (content, cb) ->
-			console.log content
 			self.writeFile outName, content, cb
 		async.waterfall fns, cb
 	pathTo: (file) ->
@@ -133,14 +133,12 @@ class BlogAnnex extends Annex
 				# TODO: some kind of default layout?
 				cb null, post.content
 		chain.push (content, cb) ->
-			console.log "hmmmm.", content
 			self.writeContent outName, {layout: layout}, content, cb
 		async.waterfall chain, ->
 			cb()
 	processAll: (cb) ->
 		super ->
 			# Now we go ahead and generate the paginated view.
-			console.log "hooked that shit."
 			cb()
 	
 module.exports = class Cork
@@ -171,17 +169,23 @@ module.exports = class Cork
 			self.monitor = monitor
 
 			changeHandler = (file) ->
-				console.log "#{file} changed!"
-				self._findAnnex file
+				return if self._filterWatcher file
+				#self._findAnnex file
+				# For now we just balete the output dir and recreate it on every change.
+				async.series [
+					(cb) -> rimraf self.outRoot, cb
+					(cb) -> self.generate cb
+				], ->
+					self.app.log.info "Reloaded Cork app."
 			monitor.on "changed", changeHandler
 			monitor.on "created", changeHandler
 			# TODO: delete handler.
 	findLayout: (name) ->
 		_.detect @layoutAnnexes, (annex) -> return annex.name is name
 	_filterWatcher: (file) =>
-		return false if (file.indexOf @outRoot) is 0
-		return false if (file.indexOf "#{@root}/node_modules") is 0
-		return false if (file.indexOf "#{@root}/.git") is 0
+		return true if (file.indexOf @outRoot) is 0
+		return true if (file.indexOf "#{@root}/node_modules") is 0
+		return true if (file.indexOf "#{@root}/.git") is 0
 		return false
 	# Finds the annex that 'owns' a file.
 	_findAnnex: (file) ->
@@ -190,7 +194,6 @@ module.exports = class Cork
 		annex = _.max @annexes, (annex) ->
 			return 0 unless (base.indexOf annex.root) is 0
 			return annex.root.length
-		console.log file, "is in", annex.name
 	# Load the main configuration from cork.json
 	_loadConfig: (cb) =>
 		fs.readFile (path.join @root, "cork.json"), "utf8", (err, data) =>
