@@ -101,32 +101,35 @@ class Annex
 class LayoutAnnex extends Annex
 	layoutContent: (content, cb) ->
 		@handler.layoutContent content, cb
-	layoutBlogPost: (post, cb) ->
-		return post.content unless @handler.layoutBlogPost
-		@handler.layoutBlogPost post, cb
+	layoutBlogPost: (post, nextPost, prevPost, content, cb) ->
+		return cb() unless @handler.layoutBlogPost
+		@handler.layoutBlogPost post, nextPost, prevPost, content, cb
 
 class BlogAnnex extends Annex
 	init: (cb) ->
-		@posts = {}
-		@postContent = {}
+		@posts = []			# Posts sorted in reverse chronological order.
+		@postsBySlug = {}	# Quick lookup of posts by slug.
+		@postContent = {}	# Post generated content
 		super cb
 	addPost: (slug, title, date, categories, tags) ->
-		# console.log "adding post.", arguments
-		@posts[slug] =
+		@postsBySlug[slug] = post = 
+			slug: slug
 			title: title
 			date: date
 			categories: categories
 			tags: tags
+		insertIndex = _.sortedIndex @posts, post, (post) -> -(post.date)
+		@posts.splice insertIndex, 0, post
 	getPost: (slug) ->
-		return @posts[slug]
+		return @postsBySlug[slug]
 	writePost: (slug, outName, layout, content, cb) ->
 		self = @
-		post = @posts[slug]
-		post.content = content
+		post = @postsBySlug[slug]
+		@postContent[slug] = content
 		layout = @config.layout
 		@_renderPost post, layout, content, (err, rendered) ->
 			return cb err if err?
-			self.writeContent outName, {layout: layout}, content, cb
+			self.writeContent outName, {layout: layout}, rendered, cb
 	processAll: (cb) ->
 		self = @
 		super ->
@@ -134,29 +137,37 @@ class BlogAnnex extends Annex
 			async.series [
 				(cb) -> self._generatePages cb
 			], cb
+	_findPostNeighbours: (slug) ->
+		postIndex = (_.pluck @posts, "slug").indexOf slug
+		prevPost = if postIndex < (@posts.length - 1) then @posts[postIndex + 1] else null
+		nextPost = if postIndex > 0 then @posts[postIndex - 1] else null
+		return [nextPost, prevPost]
 	_renderPost: (post, layout, content, cb) ->
+		[nextPost, prevPost] = @_findPostNeighbours post.slug
 		if layout
 			layoutAnnex = @cork.findLayout layout
-			layoutAnnex.layoutBlogPost post, cb
+			layoutAnnex.layoutBlogPost post, nextPost, prevPost, content, (err, out) ->
+				return cb err if err?
+				cb null, out # or content
 		else
 			# TODO: some kind of default layout?
-			cb null, post.content
+			cb null, content
 	_generatePages: (cb) ->
 		self = @
-		sortedPosts = (_.sortBy @posts, (post) -> post.date).reverse()
 		postsPerPage = 10
 		layout = @config.layout
 		generatePage = (page, cb) ->
 			start = (page - 1) * postsPerPage
-			pagePosts = sortedPosts[start...(start + postsPerPage)]
+			pagePosts = self.posts[start...(start + postsPerPage)]
 			async.map pagePosts, (post, cb) ->
-				self._renderPost post, layout, post.content, cb
+				self._renderPost post, layout, self.postContent[post.slug], cb
 			, (err, renderedPosts) ->
 				outName = if page is 1 then "index.html" else "/page/#{page}"
 				self.writeContent outName, { layout: layout }, (renderedPosts.join ""), cb
-
-		pages = Math.ceil (Object.keys @posts).length / postsPerPage
+		pages = Math.ceil (Object.keys @postsBySlug).length / postsPerPage
 		async.forEachSeries [1..pages], generatePage, cb
+	_generateCategoryPages: (cb) ->
+
 
 module.exports = class Cork
 	constructor: (@root, @app) ->
