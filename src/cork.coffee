@@ -169,12 +169,28 @@ module.exports = class Cork
 		self = @
 		watch.createMonitor @root, { filter: @_filterWatcher }, (monitor) ->
 			self.monitor = monitor
+
+			changeHandler = (file) ->
+				console.log "#{file} changed!"
+				self._findAnnex file
+			monitor.on "changed", changeHandler
+			monitor.on "created", changeHandler
+			# TODO: delete handler.
 	findLayout: (name) ->
 		_.detect @layoutAnnexes, (annex) -> return annex.name is name
 	_filterWatcher: (file) =>
-		return false if file is @outRoot
-		return false if (path.basename file) is "node_modules"
+		return false if (file.indexOf @outRoot) is 0
+		return false if (file.indexOf "#{@root}/node_modules") is 0
+		return false if (file.indexOf "#{@root}/.git") is 0
 		return false
+	# Finds the annex that 'owns' a file.
+	_findAnnex: (file) ->
+		file = path.relative @root, file
+		base = path.dirname file
+		annex = _.max @annexes, (annex) ->
+			return 0 unless (base.indexOf annex.root) is 0
+			return annex.root.length
+		console.log file, "is in", annex.name
 	# Load the main configuration from cork.json
 	_loadConfig: (cb) =>
 		fs.readFile (path.join @root, "cork.json"), "utf8", (err, data) =>
