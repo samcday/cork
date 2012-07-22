@@ -48,12 +48,18 @@ class Annex
 		@_getFileList (err, files) ->
 			self.handler.init files, cb
 	processAll: (cb) ->
-		return cb() unless @handler.processFile
 		self = @
-		@_getFileList (err, files) ->
-			async.forEach files, (file, cb) -> 
-				self.handler.processFile file, cb
-			, cb
+		async.series [
+			(cb) ->
+				return cb() unless self.handler.processFile
+				self._getFileList (err, files) ->
+					async.forEach files, (file, cb) -> 
+						self.handler.processFile file, cb
+					, cb
+			(cb) ->
+				return cb() unless self.handler.finish
+				self.handler.finish cb
+		], cb
 	writeFile: (outName, contents, cb) ->
 		outFile = path.join @cork.outRoot, @outputRoot, outName
 		outPath = path.dirname outFile
@@ -69,6 +75,7 @@ class Annex
 				layoutAnnex = self.cork.findLayout layout
 				layoutAnnex.layoutContent content, cb
 		fns.push (content, cb) ->
+			console.log content
 			self.writeFile outName, content, cb
 		async.waterfall fns, cb
 	pathTo: (file) ->
@@ -92,10 +99,14 @@ class Annex
 class LayoutAnnex extends Annex
 	layoutContent: (content, cb) ->
 		@handler.layoutContent content, cb
+	layoutBlogPost: (post, cb) ->
+		return post.content unless @handler.layoutBlogPost
+		@handler.layoutBlogPost post, cb
 
 class BlogAnnex extends Annex
 	init: (cb) ->
 		@posts = {}
+		@postContent = {}
 		super cb
 	addPost: (slug, title, date, categories, tags) ->
 		# console.log "adding post.", arguments
@@ -107,8 +118,29 @@ class BlogAnnex extends Annex
 	getPost: (slug) ->
 		return @posts[slug]
 	writePost: (slug, outName, layout, content, cb) ->
-		@writeContent outName, {layout: layout}, content, cb
-
+		self = @
+		post = @posts[slug]
+		post.content = content
+		chain = []
+		if layout
+			chain.push (cb) ->
+				layoutAnnex = self.cork.findLayout layout
+				layoutAnnex.layoutBlogPost post, cb
+		else
+			chain.push (cb) ->
+				# TODO: some kind of default layout?
+				cb null, post.content
+		chain.push (content, cb) ->
+			console.log "hmmmm.", content
+			self.writeContent outName, {layout: layout}, content, cb
+		async.waterfall chain, ->
+			cb()
+	processAll: (cb) ->
+		super ->
+			# Now we go ahead and generate the paginated view.
+			console.log "hooked that shit."
+			cb()
+	
 module.exports = class Cork
 	constructor: (@root) ->
 		@annexes = []
