@@ -8,6 +8,7 @@ async = require "async"
 mkdirp = require "mkdirp"
 rimraf = require "rimraf"
 {safeJSON} = util = require "./util"
+blog = require "./blog"
 
 validAnnexTypes = ["content", "blog", "layout", "assets"]
 
