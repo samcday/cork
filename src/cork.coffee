@@ -33,6 +33,9 @@ class DefaultAssetHandler
 
 class Annex
 	constructor: (@cork, @type, @config, @root) ->
+		# FIXME: need a getter like this because @cork.app.log doens't exist yet
+		self = @
+		Object.defineProperty @, "log", get: -> self.cork.app.log
 		@config = @config or {}
 		@name = @config.name or path.basename @root
 		@outputRoot = @config.root or @root
@@ -101,9 +104,13 @@ class Annex
 class LayoutAnnex extends Annex
 	layoutContent: (content, cb) ->
 		@handler.layoutContent content, cb
-	layoutBlogPost: (post, nextPost, prevPost, content, cb) ->
+	layoutBlogPost: (post, nextPost, prevPost, archive, content, cb) ->
 		return cb() unless @handler.layoutBlogPost
-		@handler.layoutBlogPost post, nextPost, prevPost, content, cb
+		meta =
+			nextPost: nextPost
+			prevPost: prevPost
+			archive: archive
+		@handler.layoutBlogPost post, content, meta, cb
 
 class BlogAnnex extends Annex
 	init: (cb) ->
@@ -125,9 +132,10 @@ class BlogAnnex extends Annex
 	writePost: (slug, outName, layout, content, cb) ->
 		self = @
 		post = @postsBySlug[slug]
+		post.permalink = "/#{@root}/#{outName}"
 		@postContent[slug] = content
 		layout = @config.layout
-		@_renderPost post, layout, content, (err, rendered) ->
+		@_renderPost post, layout, content, false, (err, rendered) ->
 			return cb err if err?
 			self.writeContent outName, {layout: layout}, rendered, cb
 	processAll: (cb) ->
@@ -142,11 +150,11 @@ class BlogAnnex extends Annex
 		prevPost = if postIndex < (@posts.length - 1) then @posts[postIndex + 1] else null
 		nextPost = if postIndex > 0 then @posts[postIndex - 1] else null
 		return [nextPost, prevPost]
-	_renderPost: (post, layout, content, cb) ->
+	_renderPost: (post, layout, content, archive, cb) ->
 		[nextPost, prevPost] = @_findPostNeighbours post.slug
 		if layout
 			layoutAnnex = @cork.findLayout layout
-			layoutAnnex.layoutBlogPost post, nextPost, prevPost, content, (err, out) ->
+			layoutAnnex.layoutBlogPost post, nextPost, prevPost, archive, content, (err, out) ->
 				return cb err if err?
 				cb null, out # or content
 		else
@@ -160,7 +168,7 @@ class BlogAnnex extends Annex
 			start = (page - 1) * postsPerPage
 			pagePosts = self.posts[start...(start + postsPerPage)]
 			async.map pagePosts, (post, cb) ->
-				self._renderPost post, layout, self.postContent[post.slug], cb
+				self._renderPost post, layout, self.postContent[post.slug], true, cb
 			, (err, renderedPosts) ->
 				outName = if page is 1 then "index.html" else "/page/#{page}"
 				self.writeContent outName, { layout: layout }, (renderedPosts.join ""), cb
