@@ -20,6 +20,15 @@ exports.Blog = class Blog
 		for tag in tags
 			@tags[tag] ?= []
 			@tags[tag].push post
+	removePost: (slug) ->
+		post = @postsBySlug[slug]
+		delete @postsBySlug[slug]
+		notPostFn = (post) -> post.slug is slug
+		@posts = _.reject @posts, notPostFn
+		@tags[tag] = _.reject @tags[tag], notPostFn for each tag in post.tags
+		@categories[category] = _.reject @categories[category], notPostFn for each category in post.categories
+	# Returns the "neighbours" of a post, the previous and next posts in reverse
+	# chronological order.
 	getNeighbours: (slug) ->
 		postIndex = (_.pluck @posts, "slug").indexOf slug
 		prevPost = if postIndex < (@posts.length - 1) then @posts[postIndex + 1] else null
