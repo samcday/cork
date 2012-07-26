@@ -9,6 +9,7 @@ mkdirp = require "mkdirp"
 rimraf = require "rimraf"
 {safeJSON} = util = require "./util"
 {Blog} = blog = require "./blog"
+util = require "./util"
 
 validAnnexTypes = ["content", "blog", "layout", "assets"]
 
@@ -69,7 +70,7 @@ class Annex
 		outPath = path.dirname outFile
 		mkdirp outPath, ->
 			fs.writeFile outFile, contents, cb
-	writeContent: (outName, options, content, cb) ->
+	writePage: (outName, options, meta, content, cb) ->
 		self = @
 		{layout} = options or {}
 		fns = []
@@ -77,7 +78,7 @@ class Annex
 		if layout
 			fns.push (content, cb) ->
 				layoutAnnex = self.cork.findLayout layout
-				layoutAnnex.layoutContent content, cb
+				layoutAnnex.layoutPage content, meta, cb
 		fns.push (content, cb) ->
 			self.writeFile outName, content, cb
 		async.waterfall fns, cb
@@ -102,8 +103,8 @@ class Annex
 			cb null, matches
 
 class LayoutAnnex extends Annex
-	layoutContent: (content, cb) ->
-		@handler.layoutContent content, cb
+	layoutPage: (content, meta, cb) ->
+		@handler.layoutPage content, meta, cb
 	layoutBlogPost: (post, nextPost, prevPost, archive, cb) ->
 		return cb() unless @handler.layoutBlogPost
 		meta =
@@ -132,6 +133,8 @@ class BlogAnnex extends Annex
 				(cb) -> self._generateCategoryPages cb
 				(cb) -> self._generateTagPages cb
 			], cb
+	_writeBlogPage: (outName, options, content, cb) ->
+		@writePage outName, options, @_generateBlogMeta(), content, cb
 	_renderPost: (post, layout, archive, cb) ->
 		[nextPost, prevPost] = @blog.getNeighbours post.slug
 		if layout
@@ -142,45 +145,62 @@ class BlogAnnex extends Annex
 		else
 			# TODO: some kind of default layout?
 			cb null, post.content
+	_generateBlogMeta: ->
+		meta =
+			type: "blog"
+			blog:
+				categories: @blog.categoryNames.sort().map (name) =>
+					category = @blog.categories[name]
+					return {
+						name: name
+						count: category.posts.length
+						permalink: category.permalink
+					}
+				tags: @blog.tagNames.sort().map (name) =>
+					tag = @blog.tags[name]
+					return {
+						name: name
+						count: tag.posts.length
+						permalink: tag.permalink
+					}
+		return meta
 	_generatePostPage: (slug, cb) =>
-		self = @
 		post = @blog.bySlug[slug]
 		outName = post.permalink.substring @root.length + 1
 		layout = post.layout or @config.layout
-		@_renderPost post, layout, false, (err, rendered) ->
+		@_renderPost post, layout, false, (err, rendered) =>
 			return cb err if err?
-			self.writeContent outName, { layout: layout }, rendered, cb
+			@_writeBlogPage outName, { layout: layout }, rendered, cb
 	_generateArchive: (cb) ->
-		self = @
 		layout = @config.layout
-		generatePage = (page, cb) ->
-			async.map (self.blog.getPagePosts page), (post, cb) ->
-				self._renderPost post, layout, true, cb
-			, (err, renderedPosts) ->
+		generatePage = (page, cb) =>
+			async.map (@blog.getPagePosts page), (post, cb) =>
+				@_renderPost post, layout, true, cb
+			, (err, renderedPosts) =>
 				outName = if page is 1 then "index.html" else "/page/#{page}/index.html"
-				self.writeContent outName, { layout: layout }, (renderedPosts.join ""), cb
+				@_writeBlogPage outName, { layout: layout }, (renderedPosts.join ""), cb
 		async.forEachSeries [1..@blog.numPages], generatePage, cb
 	_generateCategoryPages: (cb) ->
 		layout = @config.layout
 		layoutAnnex = @cork.findLayout layout
-		generateCategoryPage = (category, cb) =>
-			outName = "/category/#{@_sluggerize category}/index.html"
-			layoutAnnex.layoutBlogCategory category, @blog.categories[category], (err, content) =>
+		generateCategoryPage = (name, cb) =>
+			category = @blog.categories[name]
+			outName = category.permalink.substring @root.length + 1
+			layoutAnnex.layoutBlogCategory name, category.posts, (err, content) =>
 				return cb err if err
-				@writeContent outName, { layout: layout }, content, cb
-		async.forEachSeries (Object.keys @blog.categories), generateCategoryPage, cb
+				@_writeBlogPage outName, { layout: layout }, content, cb
+		async.forEachSeries @blog.categoryNames, generateCategoryPage, cb
 	_generateTagPages: (cb) ->
 		layout = @config.layout
 		layoutAnnex = @cork.findLayout layout
-		generateTagPage = (tag, cb) =>
-			outName = "/tag/#{@_sluggerize tag}/index.html"
-			layoutAnnex.layoutBlogTag tag, @blog.tags[tag], (err, content) =>
+		generateTagPage = (name, cb) =>
+			tag = @blog.tags[name]
+			outName = tag.permalink.substring @root.length + 1
+			layoutAnnex.layoutBlogTag name, tag.posts, (err, content) =>
 				return cb err if err
-				@writeContent outName, { layout: layout }, content, cb
-		async.forEachSeries (Object.keys @blog.tags), generateTagPage, cb
-	_sluggerize: (text) ->
-		# Ripped from http://stackoverflow.com/questions/1053902/how-to-convert-a-title-to-a-url-slug-in-jquery
-		return text.toLowerCase().replace(/[^\w ]+/g, '').replace(/\s+/g, '-')
+				@_writeBlogPage outName, { layout: layout }, content, cb
+		async.forEachSeries @blog.tagNames, generateTagPage, cb
+
 module.exports = class Cork
 	constructor: (@root, @app) ->
 		@annexes = []
