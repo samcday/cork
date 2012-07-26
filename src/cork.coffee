@@ -8,7 +8,7 @@ async = require "async"
 mkdirp = require "mkdirp"
 rimraf = require "rimraf"
 {safeJSON} = util = require "./util"
-blog = require "./blog"
+{Blog} = blog = require "./blog"
 
 validAnnexTypes = ["content", "blog", "layout", "assets"]
 
@@ -36,6 +36,8 @@ class Annex
 	constructor: (@cork, @type, @config, @root) ->
 		# FIXME: need a getter like this because @cork.app.log doens't exist yet
 		self = @
+		@fileHandlers = []
+
 		Object.defineProperty @, "log", get: -> self.cork.app.log
 		@config = @config or {}
 		@name = @config.name or path.basename @root
@@ -56,17 +58,12 @@ class Annex
 			self.handler.init files, cb
 	processAll: (cb) ->
 		self = @
-		async.series [
-			(cb) ->
-				return cb() unless self.handler.processFile
-				self._getFileList (err, files) ->
-					async.forEach files, (file, cb) -> 
-						self.handler.processFile file, cb
-					, cb
-			(cb) ->
-				return cb() unless self.handler.finish
-				self.handler.finish cb
-		], cb
+		@_getFileList (err, files) ->
+			async.forEach files, self.processFile, cb
+	processFile: (file, cb) =>
+		handler = _.find @fileHandlers, (handler) -> handler.filter.test file
+		return cb() unless handler
+		handler.fn file, cb
 	writeFile: (outName, contents, cb) ->
 		outFile = path.join @cork.outRoot, @outputRoot, outName
 		outPath = path.dirname outFile
@@ -86,6 +83,8 @@ class Annex
 		async.waterfall fns, cb
 	pathTo: (file) ->
 		return path.join @cork.root, @root, file
+	addFileHandler: (filter, fn) ->
+		@fileHandlers.push { filter: filter, fn: fn }
 	_getFileList: (cb) ->
 		self = @
 		glob "**/*", (cwd: path.join @cork.root, @root, "/"), (err, matches) ->
@@ -105,76 +104,54 @@ class Annex
 class LayoutAnnex extends Annex
 	layoutContent: (content, cb) ->
 		@handler.layoutContent content, cb
-	layoutBlogPost: (post, nextPost, prevPost, archive, content, cb) ->
+	layoutBlogPost: (post, nextPost, prevPost, archive, cb) ->
 		return cb() unless @handler.layoutBlogPost
 		meta =
 			nextPost: nextPost
 			prevPost: prevPost
 			archive: archive
-		@handler.layoutBlogPost post, content, meta, cb
+		@handler.layoutBlogPost post, meta, cb
 
 class BlogAnnex extends Annex
 	init: (cb) ->
-		@posts = []			# Posts sorted in reverse chronological order.
-		@postsBySlug = {}	# Quick lookup of posts by slug.
-		@postContent = {}	# Post generated content
+		@blog = new Blog
+		@blog.base = "/#{@root}"
 		super cb
-	addPost: (slug, title, date, categories, tags) ->
-		@postsBySlug[slug] = post = 
-			slug: slug
-			title: title
-			date: date
-			categories: categories
-			tags: tags
-		insertIndex = _.sortedIndex @posts, post, (post) -> -(post.date)
-		@posts.splice insertIndex, 0, post
-	getPost: (slug) ->
-		return @postsBySlug[slug]
-	writePost: (slug, outName, layout, content, cb) ->
-		self = @
-		post = @postsBySlug[slug]
-		post.permalink = "/#{@root}/#{outName}"
-		@postContent[slug] = content
-		layout = @config.layout
-		@_renderPost post, layout, content, false, (err, rendered) ->
-			return cb err if err?
-			self.writeContent outName, {layout: layout}, rendered, cb
 	processAll: (cb) ->
 		self = @
 		super ->
-			# Now we go ahead and generate the paginated view.
 			async.series [
-				(cb) -> self._generatePages cb
+				(cb) -> async.forEach (Object.keys self.blog.bySlug), self._generatePostPage, cb
+				(cb) -> self._generateArchive cb
 			], cb
-	_findPostNeighbours: (slug) ->
-		postIndex = (_.pluck @posts, "slug").indexOf slug
-		prevPost = if postIndex < (@posts.length - 1) then @posts[postIndex + 1] else null
-		nextPost = if postIndex > 0 then @posts[postIndex - 1] else null
-		return [nextPost, prevPost]
-	_renderPost: (post, layout, content, archive, cb) ->
-		[nextPost, prevPost] = @_findPostNeighbours post.slug
+	_renderPost: (post, layout, archive, cb) ->
+		[nextPost, prevPost] = @blog.getNeighbours post.slug
 		if layout
 			layoutAnnex = @cork.findLayout layout
-			layoutAnnex.layoutBlogPost post, nextPost, prevPost, archive, content, (err, out) ->
+			layoutAnnex.layoutBlogPost post, nextPost, prevPost, archive, (err, out) ->
 				return cb err if err?
 				cb null, out # or content
 		else
 			# TODO: some kind of default layout?
-			cb null, content
-	_generatePages: (cb) ->
+			cb null, post.content
+	_generatePostPage: (slug, cb) =>
 		self = @
-		postsPerPage = 10
+		post = @blog.bySlug[slug]
+		outName = post.permalink.substring @root.length + 1
+		layout = post.layout or @config.layout
+		@_renderPost post, layout, false, (err, rendered) ->
+			return cb err if err?
+			self.writeContent outName, { layout: layout }, rendered, cb
+	_generateArchive: (cb) ->
+		self = @
 		layout = @config.layout
 		generatePage = (page, cb) ->
-			start = (page - 1) * postsPerPage
-			pagePosts = self.posts[start...(start + postsPerPage)]
-			async.map pagePosts, (post, cb) ->
-				self._renderPost post, layout, self.postContent[post.slug], true, cb
+			async.map (self.blog.getPagePosts page), (post, cb) ->
+				self._renderPost post, layout, true, cb
 			, (err, renderedPosts) ->
 				outName = if page is 1 then "index.html" else "/page/#{page}"
 				self.writeContent outName, { layout: layout }, (renderedPosts.join ""), cb
-		pages = Math.ceil (Object.keys @postsBySlug).length / postsPerPage
-		async.forEachSeries [1..pages], generatePage, cb
+		async.forEachSeries [1..@blog.numPages], generatePage, cb
 	_generateCategoryPages: (cb) ->
 
 
