@@ -111,6 +111,12 @@ class LayoutAnnex extends Annex
 			prevPost: prevPost
 			archive: archive
 		@handler.layoutBlogPost post, meta, cb
+	layoutBlogCategory: (name, posts, cb) ->
+		return cb() unless @handler.layoutBlogCategory
+		@handler.layoutBlogCategory "category", name, posts, cb
+	layoutBlogTag: (name, posts, cb) ->
+		return cb() unless @handler.layoutBlogCategory
+		@handler.layoutBlogCategory "tag", name, posts, cb
 
 class BlogAnnex extends Annex
 	init: (cb) ->
@@ -123,6 +129,8 @@ class BlogAnnex extends Annex
 			async.series [
 				(cb) -> async.forEach (Object.keys self.blog.bySlug), self._generatePostPage, cb
 				(cb) -> self._generateArchive cb
+				(cb) -> self._generateCategoryPages cb
+				(cb) -> self._generateTagPages cb
 			], cb
 	_renderPost: (post, layout, archive, cb) ->
 		[nextPost, prevPost] = @blog.getNeighbours post.slug
@@ -149,12 +157,30 @@ class BlogAnnex extends Annex
 			async.map (self.blog.getPagePosts page), (post, cb) ->
 				self._renderPost post, layout, true, cb
 			, (err, renderedPosts) ->
-				outName = if page is 1 then "index.html" else "/page/#{page}"
+				outName = if page is 1 then "index.html" else "/page/#{page}/index.html"
 				self.writeContent outName, { layout: layout }, (renderedPosts.join ""), cb
 		async.forEachSeries [1..@blog.numPages], generatePage, cb
 	_generateCategoryPages: (cb) ->
-
-
+		layout = @config.layout
+		layoutAnnex = @cork.findLayout layout
+		generateCategoryPage = (category, cb) =>
+			outName = "/category/#{@_sluggerize category}/index.html"
+			layoutAnnex.layoutBlogCategory category, @blog.categories[category], (err, content) =>
+				return cb err if err
+				@writeContent outName, { layout: layout }, content, cb
+		async.forEachSeries (Object.keys @blog.categories), generateCategoryPage, cb
+	_generateTagPages: (cb) ->
+		layout = @config.layout
+		layoutAnnex = @cork.findLayout layout
+		generateTagPage = (tag, cb) =>
+			outName = "/tag/#{@_sluggerize tag}/index.html"
+			layoutAnnex.layoutBlogTag tag, @blog.tags[tag], (err, content) =>
+				return cb err if err
+				@writeContent outName, { layout: layout }, content, cb
+		async.forEachSeries (Object.keys @blog.tags), generateTagPage, cb
+	_sluggerize: (text) ->
+		# Ripped from http://stackoverflow.com/questions/1053902/how-to-convert-a-title-to-a-url-slug-in-jquery
+		return text.toLowerCase().replace(/[^\w ]+/g, '').replace(/\s+/g, '-')
 module.exports = class Cork
 	constructor: (@root, @app) ->
 		@annexes = []
@@ -174,6 +200,7 @@ module.exports = class Cork
 				annex.processAll cb
 			, cb
 		async.series [
+			(cb) -> rimraf self.outRoot, cb
 			(cb) ->
 				processAnnexes cb, self.layoutAnnexes = _.select self.annexes, (annex) ->
 					return annex instanceof LayoutAnnex
@@ -196,11 +223,7 @@ module.exports = class Cork
 			changeHandler = (file) ->
 				return if self._filterWatcher file
 				#self._findAnnex file
-				# For now we just balete the output dir and recreate it on every change.
-				async.series [
-					(cb) -> rimraf self.outRoot, cb
-					(cb) -> self.generate cb
-				], ->
+				self.generate ->
 					self.app.log.info "Reloaded Cork app."
 			monitor.on "changed", changeHandler
 			monitor.on "created", changeHandler
