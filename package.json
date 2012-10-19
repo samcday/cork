@@ -2,7 +2,7 @@
   "name": "cork",
   "version": "0.0.1",
   "description": "Pluggable static content generator.",
-  "main": "index.js",
+  "main": "lib/entry.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

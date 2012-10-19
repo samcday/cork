@@ -1,5 +1,5 @@
 fs = require "fs"
-{app} = flatiron = require "flatiron"
+cli = require "../cli"
 
 module.exports = (cb) ->
-	app.cork.generate cb
+	cli.cork.generate cb

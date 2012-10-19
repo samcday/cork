@@ -39,7 +39,7 @@ class Annex
 		self = @
 		@fileHandlers = []
 
-		Object.defineProperty @, "log", get: -> self.cork.app.log
+		Object.defineProperty @, "log", get: -> self.cork.log
 		@config = @config or {}
 		@name = @config.name or path.basename @root
 		@outputRoot = @config.root or @root
@@ -50,8 +50,9 @@ class Annex
 			@handler = (new DefaultAssetHandler @)
 		else
 			handlerName = "cork-#{@type}-#{@config.handler}"
-			handlerPath = path.join @cork.root, "node_modules", handlerName
-			@handler = (require handlerPath) @
+			@handler = (@cork.rootModule.require handlerName) @
+			# handlerPath = path.join @cork.root, "node_modules", handlerName
+			# @handler = (require handlerPath) @
 	init: (cb) ->
 		return cb() unless @handler.init
 		self = @
@@ -202,7 +203,8 @@ class BlogAnnex extends Annex
 		async.forEachSeries @blog.tagNames, generateTagPage, cb
 
 module.exports = class Cork
-	constructor: (@root, @app) ->
+	constructor: (@rootModule, @log) ->
+		@root = path.dirname @rootModule.filename
 		@annexes = []
 	init: (cb) ->
 		async.series [
@@ -233,7 +235,7 @@ module.exports = class Cork
 		server.use express.static @outRoot
 		server.use express.directory @outRoot
 		server.listen 4000
-		@app.log.info "Starting web server on port 4000"
+		@log.info "Starting web server on port 4000"
 		cb()
 	watch: (cb) ->
 		self = @
@@ -244,7 +246,7 @@ module.exports = class Cork
 				return if self._filterWatcher file
 				#self._findAnnex file
 				self.generate ->
-					self.app.log.info "Reloaded Cork app."
+					self.log.info "Reloaded Cork app."
 			monitor.on "changed", changeHandler
 			monitor.on "created", changeHandler
 			# TODO: delete handler.
