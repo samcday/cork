@@ -116,6 +116,9 @@ class LayoutAnnex extends Annex
 	layoutBlogCategory: (name, posts, cb) ->
 		return cb() unless @handler.layoutBlogCategory
 		@handler.layoutBlogCategory "category", name, posts, cb
+	layoutBlogArchive: (page, totalPages, renderedPosts, cb) ->
+		throw "Not implemented" unless @handler.layoutBlogArchive
+		@handler.layoutBlogArchive page, totalPages, renderedPosts, cb
 	layoutBlogTag: (name, posts, cb) ->
 		return cb() unless @handler.layoutBlogCategory
 		@handler.layoutBlogCategory "tag", name, posts, cb
@@ -174,12 +177,14 @@ class BlogAnnex extends Annex
 			@_writeBlogPage outName, { layout: layout }, rendered, cb
 	_generateArchive: (cb) ->
 		layout = @config.layout
+		layoutAnnex = @cork.findLayout layout
 		generatePage = (page, cb) =>
 			async.map (@blog.getPagePosts page), (post, cb) =>
 				@_renderPost post, layout, true, cb
 			, (err, renderedPosts) =>
 				outName = if page is 1 then "index.html" else "/page/#{page}/index.html"
-				@_writeBlogPage outName, { layout: layout }, (renderedPosts.join ""), cb
+				layoutAnnex.layoutBlogArchive page, @blog.numPages, renderedPosts, (err, content) =>
+					@_writeBlogPage outName, { layout: layout }, content, cb
 		async.forEachSeries [1..@blog.numPages], generatePage, cb
 	_generateCategoryPages: (cb) ->
 		layout = @config.layout
