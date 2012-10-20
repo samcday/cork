@@ -8,4 +8,5 @@ exports.run = () ->
 		cli.cork.init (err) ->
 			return console.error err if err # TODO:
 			cli.start (err) ->
+				return cli.log.error err if err?
 				console.log "done."

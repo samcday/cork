@@ -167,7 +167,7 @@ class BlogAnnex extends Annex
 		return meta
 	_generatePostPage: (slug, cb) =>
 		post = @blog.bySlug[slug]
-		outName = post.permalink.substring @root.length + 1
+		outName = (post.permalink.substring @root.length + 1) + "index.html"
 		layout = post.layout or @config.layout
 		@_renderPost post, layout, false, (err, rendered) =>
 			return cb err if err?
@@ -188,7 +188,7 @@ class BlogAnnex extends Annex
 		layoutAnnex = @cork.findLayout layout
 		generateCategoryPage = (name, cb) =>
 			category = @blog.categories[name]
-			outName = category.permalink.substring @root.length + 1
+			outName = (category.permalink.substring @root.length + 1) + "index.html"
 			layoutAnnex.layoutBlogCategory name, category.posts, (err, content) =>
 				return cb err if err
 				@_writeBlogPage outName, { layout: layout }, content, cb
@@ -198,7 +198,7 @@ class BlogAnnex extends Annex
 		layoutAnnex = @cork.findLayout layout
 		generateTagPage = (name, cb) =>
 			tag = @blog.tags[name]
-			outName = tag.permalink.substring @root.length + 1
+			outName = (tag.permalink.substring @root.length + 1) + "index.html"
 			layoutAnnex.layoutBlogTag name, tag.posts, (err, content) =>
 				return cb err if err
 				@_writeBlogPage outName, { layout: layout }, content, cb
