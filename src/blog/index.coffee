@@ -64,4 +64,4 @@ exports.Blog = class Blog extends process.EventEmitter
 		return "#{@base}/category/#{util.sluggerize category}/index.html"
 	_postPermalink: (post) ->
 		{slug, date} = post
-		return "#{@base}/#{date.getFullYear()}/#{date.getMonth()+1}/#{date.getDate()}/#{slug}/index.html"
+		return "#{@base}/#{date.getFullYear()}/#{util.zeroFill(date.getMonth()+1, 2)}/#{util.zeroFill(date.getDate(), 2)}/#{slug}/index.html"
