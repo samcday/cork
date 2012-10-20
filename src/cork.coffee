@@ -106,19 +106,17 @@ class Annex
 class LayoutAnnex extends Annex
 	layoutPage: (content, meta, cb) ->
 		@handler.layoutPage content, meta, cb
-	layoutBlogPost: (post, nextPost, prevPost, archive, cb) ->
+	layoutBlogPost: (blogAnnex, post, archive, cb) ->
 		return cb() unless @handler.layoutBlogPost
 		meta =
-			nextPost: nextPost
-			prevPost: prevPost
 			archive: archive
-		@handler.layoutBlogPost post, meta, cb
+		@handler.layoutBlogPost blogAnnex.blog, post, meta, cb
 	layoutBlogCategory: (name, posts, cb) ->
 		return cb() unless @handler.layoutBlogCategory
 		@handler.layoutBlogCategory "category", name, posts, cb
-	layoutBlogArchive: (page, totalPages, renderedPosts, cb) ->
+	layoutBlogArchive: (blogAnnex, page, renderedPosts, cb) ->
 		throw "Not implemented" unless @handler.layoutBlogArchive
-		@handler.layoutBlogArchive page, totalPages, renderedPosts, cb
+		@handler.layoutBlogArchive blogAnnex.blog, page, renderedPosts, cb
 	layoutBlogTag: (name, posts, cb) ->
 		return cb() unless @handler.layoutBlogCategory
 		@handler.layoutBlogCategory "tag", name, posts, cb
@@ -140,10 +138,9 @@ class BlogAnnex extends Annex
 	_writeBlogPage: (outName, options, content, cb) ->
 		@writePage outName, options, @_generateBlogMeta(), content, cb
 	_renderPost: (post, layout, archive, cb) ->
-		[nextPost, prevPost] = @blog.getNeighbours post.slug
 		if layout
 			layoutAnnex = @cork.findLayout layout
-			layoutAnnex.layoutBlogPost post, nextPost, prevPost, archive, (err, out) ->
+			layoutAnnex.layoutBlogPost @, post, archive, (err, out) ->
 				return cb err if err?
 				cb null, out # or content
 		else
@@ -183,7 +180,7 @@ class BlogAnnex extends Annex
 				@_renderPost post, layout, true, cb
 			, (err, renderedPosts) =>
 				outName = if page is 1 then "index.html" else "/page/#{page}/index.html"
-				layoutAnnex.layoutBlogArchive page, @blog.numPages, renderedPosts, (err, content) =>
+				layoutAnnex.layoutBlogArchive @, page, renderedPosts, (err, content) =>
 					@_writeBlogPage outName, { layout: layout }, content, cb
 		async.forEachSeries [1..@blog.numPages], generatePage, cb
 	_generateCategoryPages: (cb) ->
