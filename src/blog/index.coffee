@@ -59,9 +59,9 @@ exports.Blog = class Blog extends process.EventEmitter
 			posts: []
 		category.posts.push post
 	_tagPermalink: (tag) ->
-		return "#{@base}/tag/#{util.sluggerize tag}/index.html"
+		return "#{@base}/tag/#{util.sluggerize tag}/"
 	_categoryPermalink: (category) ->
-		return "#{@base}/category/#{util.sluggerize category}/index.html"
+		return "#{@base}/category/#{util.sluggerize category}/"
 	_postPermalink: (post) ->
 		{slug, date} = post
-		return "#{@base}/#{date.getFullYear()}/#{util.zeroFill(date.getMonth()+1, 2)}/#{util.zeroFill(date.getDate(), 2)}/#{slug}/index.html"
+		return "#{@base}/#{date.getFullYear()}/#{util.zeroFill(date.getMonth()+1, 2)}/#{util.zeroFill(date.getDate(), 2)}/#{slug}/"
