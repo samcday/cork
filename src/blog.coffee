@@ -1,7 +1,7 @@
 _ = require "underscore"
-util = require "../util"
+util = require "./util"
 
-exports.Blog = class Blog extends process.EventEmitter
+module.exports = class Blog extends process.EventEmitter
 	constructor: ->
 		@posts = []			# Blog posts sorted in reverse chronological order.
 		@bySlug = {}		# Quick index into blog posts by slug.
