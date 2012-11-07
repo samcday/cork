@@ -21,6 +21,7 @@
     "watch": "~0.5.1",
     "rimraf": "~2.0.2",
     "gaze": "~0.2.1",
-    "minimatch": "~0.2.9"
+    "minimatch": "~0.2.9",
+    "chokidar": "~0.4.0"
   }
 }

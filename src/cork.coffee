@@ -2,6 +2,7 @@ _ = require "underscore"
 express = require "express"
 watch = require "watch"
 gaze = require "gaze"
+chokidar = require "chokidar"
 glob = require "glob"
 minimatch = require "minimatch"
 fs = require "fs"
@@ -27,6 +28,12 @@ fileIgnores = [
 	/\.annex$/
 	/cork\.json$/
 	/^out\/?/
+]
+
+watcherIgnores = [
+	/\/\.git$|\/\.git\/.*$/
+	/\/node_modules$|\/node_modules\/.*$/
+	/\/\..*/
 ]
 
 class DefaultAssetHandler
@@ -74,23 +81,41 @@ module.exports = class Cork
 		cb()
 	watch: (cb) ->
 		self = @
-		gaze ["*.annex"], (err, watcher) =>
+
+		watcher = chokidar.watch @root, 
+			persistent: true
+			ignored: (file) ->
+				# return false if -1 < file.indexOf "node_modules"
+				# console.log file, /\/node_modules$|\/node_modules\/.*$/.test file
+				return true if _.any watcherIgnores, (ignore) -> ignore.test file
+				return true if 0 is file.indexOf self.outRoot
+				# console.log arguments
+				console.log "#{file}?"
+				return false
+		watcher.on "all", (op, file) ->
+			console.log op, file
+
+		cb()
+		###
+		gaze ["**.annex"], { cwd: @root }, (err, watcher) =>
 			@watcher = watcher
-			self.watcher.on "all", (ev, filepath) ->
+			self.watcher.on "all", (ev, filePath) ->
+				console.log filePath
+				return if 0 is filePath.indexOf @outRoot
+				relativePath = path.relative self.root, filePath
+				return unless 0 > relativePath.indexOf "node_modules/"
 				self.generate ->
 					self.log.info "Reloaded Cork app."
-				console.log filepath + " changed"
-
+				console.log relativePath + " changed"
+			self.watcher.on "error", (err) ->
+				
 			extraPatterns = []
-
-			for annex in @annexes
-				extraPatterns.push "#{annex.pathTo "."}/#{fileHandler.matcher.pattern}" for fileHandler in annex.fileHandlers
-
-			# TODO: remove me once gaze is fixed from issue #2
-			watcher.add extraPatterns, ->
-				watcher._initWatched ->
-					cb()
-
+			for annex in self.annexes
+				annexRoot = annex.root + if annex.root then "/" else ""
+				extraPatterns.push "#{annexRoot}#{fileHandler.matcher.pattern}" for fileHandler in annex.fileHandlers
+			console.log extraPatterns
+			self.watcher.add extraPatterns, cb
+		###
 		###
 		gaze "#{@root}/**", (err, watcher) ->
 			@on "all", (ev, filepath) ->
