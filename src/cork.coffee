@@ -31,8 +31,8 @@ fileIgnores = [
 ]
 
 watcherIgnores = [
-	/\/\.git$|\/\.git\/.*$/
-	/\/node_modules$|\/node_modules\/.*$/
+	/(?:\/|^)(?:\.git$|\.git\/.*)$/
+	/(?:\/|^)(?:node_modules$|node_modules\/.*)$/
 	/\/\..*/
 ]
 
@@ -85,59 +85,14 @@ module.exports = class Cork
 		watcher = chokidar.watch @root, 
 			persistent: true
 			ignored: (file) ->
-				# return false if -1 < file.indexOf "node_modules"
-				# console.log file, /\/node_modules$|\/node_modules\/.*$/.test file
-				return true if _.any watcherIgnores, (ignore) -> ignore.test file
 				return true if 0 is file.indexOf self.outRoot
-				# console.log arguments
+				relativePath = path.relative self.root, file
+				return true if _.any watcherIgnores, (ignore) -> ignore.test relativePath
 				console.log "#{file}?"
 				return false
 		watcher.on "all", (op, file) ->
 			console.log op, file
-
 		cb()
-		###
-		gaze ["**.annex"], { cwd: @root }, (err, watcher) =>
-			@watcher = watcher
-			self.watcher.on "all", (ev, filePath) ->
-				console.log filePath
-				return if 0 is filePath.indexOf @outRoot
-				relativePath = path.relative self.root, filePath
-				return unless 0 > relativePath.indexOf "node_modules/"
-				self.generate ->
-					self.log.info "Reloaded Cork app."
-				console.log relativePath + " changed"
-			self.watcher.on "error", (err) ->
-				
-			extraPatterns = []
-			for annex in self.annexes
-				annexRoot = annex.root + if annex.root then "/" else ""
-				extraPatterns.push "#{annexRoot}#{fileHandler.matcher.pattern}" for fileHandler in annex.fileHandlers
-			console.log extraPatterns
-			self.watcher.add extraPatterns, cb
-		###
-		###
-		gaze "#{@root}/**", (err, watcher) ->
-			@on "all", (ev, filepath) ->
-				self.generate ->
-					self.log.info "Reloaded Cork app."
-				# console.log filepath + " changed"
-			@on "error", (err) ->
-				console.error err
-		###
-		###
-		watch.createMonitor @root, { filter: @_filterWatcher }, (monitor) ->
-			self.monitor = monitor
-
-			changeHandler = (file) ->
-				return if self._filterWatcher file
-				#self._findAnnex file
-				self.generate ->
-					self.log.info "Reloaded Cork app."
-			monitor.on "changed", changeHandler
-			monitor.on "created", changeHandler
-			# TODO: delete handler.
-		###
 	findLayout: (name) ->
 		_.detect @layoutAnnexes, (annex) -> return annex.name is name
 	_filterWatcher: (file) =>
